@@ -36,7 +36,7 @@ typedef struct {
     int senderId;           // sender node id
 } Message;
 
-int send_message(int type, int r_number, int senderId) {
+int send_message(msg_type type, int r_number, int senderId) {
     int msqid;
     int msgflg = IPC_CREAT | 0666;
     key_t key;
@@ -46,11 +46,11 @@ int send_message(int type, int r_number, int senderId) {
     if ((msqid = msgget(key, msgflg)) < 0) {
         die("msgget");
     }
-    sbuf.type = REQUEST;
+    sbuf.type = type;
     sbuf.r_number = r_number;
     sbuf.senderId = senderId;
     buf_length = sizeof(sbuf);
-    printf("buf_length is %d\n", buf_length);
+    printf("buf_length is %zu\n", buf_length);
     if (msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
         printf("%d, %d, %d, %d, %zu\n", msqid, sbuf.type, sbuf.r_number, sbuf.senderId, buf_length);
         die("msgsnd");
@@ -83,7 +83,14 @@ int main() {
         for (int i = 1; i <= 10; i++)
         {
             sleep(1);
-            send_message(REQUEST, i, i*i);
+            if (i % 2 == 0)
+            {
+                send_message(REQUEST, i, i*i);
+            }
+            else
+            {
+                send_message(REPLY, i, i*i);
+            }
 
         }
         printf("Sender process END\n");

@@ -59,7 +59,26 @@ int send_message(int type, int r_number, int senderId) {
     }
 }
 
-int receive_message() {
+int receive_REQUEST() {
+    int msqid;
+    int msgflg = IPC_CREAT | 0666;
+    key_t key;
+    Message rbuf;
+
+    key = 1234;
+
+    if ((msqid = msgget(key, msgflg)) < 0) {
+        die("msgget");
+    }
+    // We'll receive message type 1
+    if (msgrcv(msqid, &rbuf, MAXSIZE, 0, 0) < 0) {
+        die("msgrcv");
+    }
+
+    printf("%d, %d, %d\n", rbuf.type, rbuf.r_number, rbuf.senderId);
+}
+
+int receive_REPLY() {
     int msqid;
     int msgflg = IPC_CREAT | 0666;
     key_t key;
@@ -83,10 +102,10 @@ int main() {
     pid1 = fork();
     if (pid1 == 0) {
         // child process
-        printf("Child process START\n");
-        sleep(1);
-        send_message(REQUEST, 3, 6);
-        printf("Child process END\n");
+        while (1) {
+            printf("Parent process waiting for REPLY message\n");
+            receive_REPLY();
+        }
         exit(0);
     } else if (pid1 < 0) {
         // fork failed
@@ -94,12 +113,10 @@ int main() {
         exit(1);
     } else {
         // parent process
-        printf("Parent process START\n");
         while (1) {
-            printf("Parent process waiting for message\n");
-            receive_message();
+            printf("Parent process waiting for REQUEST message\n");
+            receive_REQUEST();
         }
-        printf("Parent process END\n");
         exit(0);
     }
 }
