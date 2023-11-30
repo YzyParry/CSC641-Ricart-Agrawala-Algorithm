@@ -116,7 +116,7 @@ int main() {
     // printf("shared_data->N address is %p\n", &shared_data->N);
     // printf("shared_data->request_number address is %p\n", &shared_data->request_number);
 
-    shared_data->N = 2;
+    shared_data->N = 4;
     // printf("shared_data->N address is %d\n", shared_data->N);
 
     shared_data->request_number = 0;
