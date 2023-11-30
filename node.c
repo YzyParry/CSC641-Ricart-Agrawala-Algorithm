@@ -5,6 +5,9 @@
 #include <sys/ipc.h>
 #include <sys/msg.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <sys/shm.h>
+#include <sys/stat.h>
 
 #define MAXSIZE     128
 #define me 1
@@ -16,7 +19,6 @@ typedef struct SharedData {
     int outstanding_reply;      // number of outstanding replies
     int request_cs;             // flag to request critical section: 1 = request, 0 = not request
     int reply_deferred[10];    // reply to node i: 1 = deferred, 0 = not deferred
-
     sem_t mutex;                // for mutual exclusion to shared variables
     sem_t wait_sem;             // used to wait for all requests
 } SharedData;
@@ -107,10 +109,25 @@ int send_message(long receiverId, msg_type type, int r_number, int senderId) {
 int main() {
     int shm_id;
     SharedData *shared_data;
+    // printf("size of SharedData is %lu\n", sizeof(SharedData));
     shm_id = shmget(IPC_PRIVATE, sizeof(SharedData), S_IRUSR | S_IWUSR);
     shared_data = shmat(shm_id, NULL, 0);
+    // printf("shared_data address is %p\n", shared_data);
+    // printf("shared_data->N address is %p\n", &shared_data->N);
+    // printf("shared_data->request_number address is %p\n", &shared_data->request_number);
+
+    shared_data->N = 1;
+    // printf("shared_data->N address is %d\n", shared_data->N);
+
+    shared_data->request_number = 0;
+    shared_data->highest_request_number = 0;
+    shared_data->outstanding_reply = 0;
+    shared_data->request_cs = 0;
+    // printf("DEBUG\n");
+
     sem_init(&shared_data->mutex, 1, 1);
     sem_init(&shared_data->wait_sem, 1, 0);
+    // printf("DEBUG\n");
 
     pid_t pid;
     pid = fork();
@@ -141,8 +158,6 @@ int main() {
             }
             
         }
-
-
         
     } else {
         // Request process
@@ -151,14 +166,16 @@ int main() {
 
             sem_wait(&shared_data->mutex);
             shared_data->request_cs = 1;
+            // printf("DEBUG\n");
             shared_data->request_number = shared_data->highest_request_number + 1;
             sem_post(&shared_data->mutex);
 
             shared_data->outstanding_reply = shared_data->N - 1;
             printf("Request Number is %d\n", shared_data->request_number);
             printf("%d replies needed\n", shared_data->outstanding_reply);
-            for (int i = 0; i < shared_data->N; i++) {
+            for (int i = 1; i < shared_data->N; i++) {
                 if (i != me) {
+                    printf("Node 1 sending REQUEST to %d\n", i);
                     send_message(i, REQUEST, shared_data->request_number, me);
                 }
             }
