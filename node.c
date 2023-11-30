@@ -200,10 +200,11 @@ int main() {
             printf("Node 1 leaving critical section\n");
 
             shared_data->request_cs = 0;
-            for (int i = 0; i < shared_data->N; i++) {
+            for (int i = 1; i <= shared_data->N; i++) {
+                printf("DEBUG: shared_data->reply_deferred[%d] is %d\n", i, shared_data->reply_deferred[i]);
                 if (shared_data->reply_deferred[i]) {
-                    printf("Node 1 sending deferred REPLY to %d\n", i+1);
-                    send_message(i+1, REPLY, -1, me);
+                    printf("Node 1 sending deferred REPLY to %d\n", i);
+                    send_message(i, REPLY, -1, me);
                     shared_data->reply_deferred[i] = 0;
                 }
             }
