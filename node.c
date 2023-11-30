@@ -43,7 +43,7 @@ void die(char *s) {
 }
 
 // Send message to print server
-void print() {
+void print_to_server(char *s) {
     int msqid;
     int msgflg = IPC_CREAT | 0666;
     key_t key;
@@ -54,9 +54,9 @@ void print() {
         die("msgget");
     }
     sbuf.mtype = 1;
-    strcpy(sbuf.data, "hello");
+    strcpy(sbuf.data, s);
     buf_length = sizeof(sbuf)-sizeof(long);
-    printf("buf_length is %zu\n", buf_length);
+    // printf("buf_length is %zu\n", buf_length);
     if (msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
         die("msgsnd");
     } else {
@@ -147,22 +147,45 @@ int main() {
     } else {
         // Request process
         while (1) {
+            printf("Node 1 requesting critical section\n");
+
             sem_wait(&shared_data->mutex);
             shared_data->request_cs = 1;
             shared_data->request_number = shared_data->highest_request_number + 1;
             sem_post(&shared_data->mutex);
+
             shared_data->outstanding_reply = shared_data->N - 1;
+            printf("Request Number is %d\n", shared_data->request_number);
+            printf("%d replies needed\n", shared_data->outstanding_reply);
             for (int i = 0; i < shared_data->N; i++) {
                 if (i != me) {
                     send_message(i, REQUEST, shared_data->request_number, me);
                 }
             }
+
+            printf("Node 1 waiting for replies\n");
             while (shared_data->outstanding_reply > 0) {
                 sem_wait(&shared_data->wait_sem);
             }
-        }
-        
-    }
 
+            // ENTER Critical section
+            printf("Node 1 entering critical section\n");
+            print_to_server("########## START OUTPUT FOR NODE 1 ###############");
+            for (int i = 0; i < 4; i++) {
+                sleep(1);
+                print_to_server("Node 1 printing: Hello world");
+            }
+            print_to_server("----------- END OUTPUT FOR NODE 1 ----------------");
+            // LEAVE Critical section
+
+            shared_data->request_cs = 0;
+            for (int i = 0; i < shared_data->N; i++) {
+                if (shared_data->reply_deferred[i]) {
+                    send_message(i, REPLY, -1, me);
+                    shared_data->reply_deferred[i] = 0;
+                }
+            }
+        }
+    }
     return 0;
 }
