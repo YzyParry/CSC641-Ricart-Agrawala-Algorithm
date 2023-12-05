@@ -24,12 +24,12 @@ typedef struct SharedData {
 } SharedData;
 
 // message types
-typedef enum {REQUEST, REPLY, PRINT, NEW_NODE} msg_type;
+// typedef enum {REQUEST, REPLY, PRINT, NEW_NODE} msg_type;
 
 // message structure
 typedef struct {
     long mtype;             // node id, each node only receives message sent to itself
-    msg_type type;          // REQUEST, REPLY, PRINT, NEW_NODE
+    // msg_type type;          // REQUEST, REPLY, PRINT, NEW_NODE
     int to;
     int req_value;           // request number
     int from;           // sender node id
@@ -85,7 +85,7 @@ Message receive_message(long mtype) {
     return rbuf;
 }
 
-int send_message(long receiverId, msg_type type, int req_value, int from) {
+int send_message(long receiverId,  int req_value, int from) {
     int msqid;
     int msgflg = IPC_CREAT | 0666;
     key_t key;
@@ -96,14 +96,15 @@ int send_message(long receiverId, msg_type type, int req_value, int from) {
         die("msgget");
     }
     sbuf.mtype = receiverId;
-    sbuf.type = type;
+    // sbuf.type = type;
+    sbuf.to = receiverId;
     sbuf.req_value = req_value;
     sbuf.from = from;
     buf_length = sizeof(sbuf)-sizeof(long);
     if (msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
         die("msgsnd");
     } else {
-        printf("Message sent to %ld, type is\n", sbuf.mtype, sbuf.type);
+        printf("Message sent to %ld, type is%d\n", sbuf.mtype, sbuf.req_value);
     }
 }
 
@@ -136,8 +137,8 @@ int main() {
         // Receive message
         while (1) {
             Message ret = receive_message(me);
-            printf("Received message sent to %ld, type: %d, request number: %d, from: %d\n", ret.mtype, ret.type, ret.req_value, ret.from);
-            if (ret.type == REQUEST) {
+            printf("Received message sent to %ld, type: %d, request number: %d, from: %d\n", ret.mtype,  ret.req_value, ret.from);
+            if (ret.req_value >= 0) {
                 int k = ret.req_value;
                 int i = ret.from;
                 int defer_it = 0;
@@ -151,10 +152,10 @@ int main() {
                     printf("Node 1 deferring REPLY to %d\n", i);
                     shared_data->reply_deferred[i] = 1;
                 } else {
-                    send_message(i, REPLY, -1, me);
+                    send_message(i, -1, me);
                 }
             }
-            else if (ret.type == REPLY) {
+            else if (ret.req_value == -1) {
                 printf("Node 1 received REPLY from %d\n", ret.from);
                 shared_data->outstanding_reply -= 1;
                 sem_post(&shared_data->wait_sem);
@@ -180,7 +181,7 @@ int main() {
             for (int i = 1; i <= shared_data->N; i++) {
                 if (i != me) {
                     printf("Node 1 sending REQUEST to %d\n", i);
-                    send_message(i, REQUEST, shared_data->request_number, me);
+                    send_message(i,  shared_data->request_number, me);
                 }
             }
 
@@ -205,7 +206,7 @@ int main() {
                 printf("DEBUG: shared_data->reply_deferred[%d] is %d\n", i, shared_data->reply_deferred[i]);
                 if (shared_data->reply_deferred[i]) {
                     printf("Node 1 sending deferred REPLY to %d\n", i);
-                    send_message(i, REPLY, -1, me);
+                    send_message(i, -1, me);
                     shared_data->reply_deferred[i] = 0;
                 }
             }
