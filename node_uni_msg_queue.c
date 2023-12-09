@@ -8,9 +8,12 @@
 #include <fcntl.h>
 #include <sys/shm.h>
 #include <sys/stat.h>
+#include <string.h>
 
-#define MAXSIZE     128
-#define me 1
+#define MAXSIZE     200
+#define me 4
+#define NO_OF_NODE 4
+
 
 typedef struct SharedData {
     int N;                      // number of nodes
@@ -29,10 +32,10 @@ typedef struct SharedData {
 // message structure
 typedef struct {
     long mtype;             // node id, each node only receives message sent to itself
-    // msg_type type;          // REQUEST, REPLY, PRINT, NEW_NODE
-    int to;
-    int req_value;           // request number
     int from;           // sender node id
+    // msg_type type;          // REQUEST, REPLY, PRINT, NEW_NODE
+    int req_value;           // request number
+    int to;
 } Message;
 
 typedef struct {
@@ -49,16 +52,25 @@ void die(char *s) {
 void print_to_server(char *s) {
     int msqid;
     int msgflg = IPC_CREAT | 0666;
-    key_t key;
+    // key_t key;
     msgbuf sbuf;
     size_t buf_length;
-    key = 5678;
-    if ((msqid = msgget(key, msgflg)) < 0) {
+    // key = 5678;
+
+    char dir_path[100];
+    int msg_queue_id;
+    if (getcwd(dir_path, sizeof(dir_path)) == NULL) {
+        perror("getcwd");
+        exit(1);
+    }
+    key_t print_key = ftok(dir_path, 271546);
+
+    if ((msqid = msgget(print_key, msgflg)) < 0) {
         die("msgget");
     }
-    sbuf.mtype = 1;
+    sbuf.mtype = 9999;
     strcpy(sbuf.data, s);
-    buf_length = sizeof(sbuf)-sizeof(long);
+    buf_length = sizeof(sbuf);
     // printf("buf_length is %zu\n", buf_length);
     if (msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
         die("msgsnd");
@@ -70,10 +82,18 @@ void print_to_server(char *s) {
 Message receive_message(long mtype) {
     int msqid;
     int msgflg = IPC_CREAT | 0666;
-    key_t key;
+    // key_t key;
+    char dir_path[100];
+    int msg_queue_id;
+    if (getcwd(dir_path, sizeof(dir_path)) == NULL) {
+        perror("getcwd");
+        exit(1);
+    }
+    key_t key = ftok(dir_path, 3141678);
+
     Message rbuf;
 
-    key = 1234;
+    // key = 1234;
 
     if ((msqid = msgget(key, msgflg)) < 0) {
         die("msgget");
@@ -88,10 +108,18 @@ Message receive_message(long mtype) {
 int send_message(long receiverId,  int req_value, int from) {
     int msqid;
     int msgflg = IPC_CREAT | 0666;
-    key_t key;
+    // key_t key;
+    char dir_path[100];
+    int msg_queue_id;
+    if (getcwd(dir_path, sizeof(dir_path)) == NULL) {
+        perror("getcwd");
+        exit(1);
+    }
+    key_t key = ftok(dir_path, 3141678);
+
     Message sbuf;
     size_t buf_length;
-    key = 1234;
+    // key = 1234;
     if ((msqid = msgget(key, msgflg)) < 0) {
         die("msgget");
     }
@@ -100,11 +128,11 @@ int send_message(long receiverId,  int req_value, int from) {
     sbuf.to = receiverId;
     sbuf.req_value = req_value;
     sbuf.from = from;
-    buf_length = sizeof(sbuf)-sizeof(long);
+    buf_length = sizeof(sbuf);
     if (msgsnd(msqid, &sbuf, buf_length, IPC_NOWAIT) < 0) {
         die("msgsnd");
     } else {
-        printf("Message sent to %ld, type is%d\n", sbuf.mtype, sbuf.req_value);
+        printf("Message sent to %ld, req_value is%d\n", sbuf.mtype, sbuf.req_value);
     }
 }
 
@@ -118,7 +146,7 @@ int main() {
     // printf("shared_data->N address is %p\n", &shared_data->N);
     // printf("shared_data->request_number address is %p\n", &shared_data->request_number);
 
-    shared_data->N = 4;
+    shared_data->N = NO_OF_NODE;
     // printf("shared_data->N address is %d\n", shared_data->N);
 
     shared_data->request_number = 0;
@@ -137,7 +165,7 @@ int main() {
         // Receive message
         while (1) {
             Message ret = receive_message(me);
-            printf("Received message sent to %ld, type: %d, request number: %d, from: %d\n", ret.mtype,  ret.req_value, ret.from);
+            printf("Received message sent to %ld, request number: %d, from: %d\n", ret.mtype,  ret.req_value, ret.from);
             if (ret.req_value >= 0) {
                 int k = ret.req_value;
                 int i = ret.from;
@@ -149,14 +177,14 @@ int main() {
                 defer_it = (shared_data->request_cs) && ((k > shared_data->request_number) || ((k == shared_data->request_number) && (i > me)));
                 sem_post(&shared_data->mutex);
                 if (defer_it) {
-                    printf("Node 1 deferring REPLY to %d\n", i);
+                    printf("Node Parry deferring REPLY to %d\n", i);
                     shared_data->reply_deferred[i] = 1;
                 } else {
                     send_message(i, -1, me);
                 }
             }
             else if (ret.req_value == -1) {
-                printf("Node 1 received REPLY from %d\n", ret.from);
+                printf("Node Parry received REPLY from %d\n", ret.from);
                 shared_data->outstanding_reply -= 1;
                 sem_post(&shared_data->wait_sem);
             }
@@ -167,7 +195,7 @@ int main() {
         // Request process
         sleep(1);
         while (1) {
-            printf("Node 1 requesting critical section\n");
+            printf("Node Parry requesting critical section\n");
 
             sem_wait(&shared_data->mutex);
             shared_data->request_cs = 1;
@@ -180,32 +208,32 @@ int main() {
             printf("%d replies needed\n", shared_data->outstanding_reply);
             for (int i = 1; i <= shared_data->N; i++) {
                 if (i != me) {
-                    printf("Node 1 sending REQUEST to %d\n", i);
+                    printf("Node Parry sending REQUEST to %d\n", i);
                     send_message(i,  shared_data->request_number, me);
                 }
             }
 
-            printf("Node 1 waiting for replies\n");
+            printf("Node Parry waiting for replies\n");
             while (shared_data->outstanding_reply > 0) {
                 sem_wait(&shared_data->wait_sem);
             }
 
             // ENTER Critical section
-            printf("Node 1 entering critical section\n");
-            print_to_server("########## START OUTPUT FOR NODE 1 ###############");
+            printf("Node Parry entering critical section\n");
+            print_to_server("########## START OUTPUT FOR NODE Parry ###############");
             for (int i = 0; i < 4; i++) {
                 sleep(1);
-                print_to_server("Node 1 printing: Hello world");
+                print_to_server("Node Parry printing: Hello world");
             }
-            print_to_server("----------- END OUTPUT FOR NODE 1 ----------------");
+            print_to_server("----------- END OUTPUT FOR NODE Parry ----------------");
             // LEAVE Critical section
-            printf("Node 1 leaving critical section\n");
+            printf("Node Parry leaving critical section\n");
 
             shared_data->request_cs = 0;
             for (int i = 1; i <= shared_data->N; i++) {
                 printf("DEBUG: shared_data->reply_deferred[%d] is %d\n", i, shared_data->reply_deferred[i]);
                 if (shared_data->reply_deferred[i]) {
-                    printf("Node 1 sending deferred REPLY to %d\n", i);
+                    printf("Node Parry sending deferred REPLY to %d\n", i);
                     send_message(i, -1, me);
                     shared_data->reply_deferred[i] = 0;
                 }
